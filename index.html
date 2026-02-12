@@ -1,0 +1,334 @@
+<!doctype html>
+<html lang="ro">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Quiz PMP / PmP – UTCN</title>
+  <style>
+    :root { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
+    body { margin: 0; background:#0b0f14; color:#e7eef7; }
+    header { padding: 18px 16px; border-bottom: 1px solid #1e2a3a; background:#0f1622; position: sticky; top: 0; }
+    h1 { margin:0; font-size: 18px; }
+    .wrap { max-width: 980px; margin: 0 auto; padding: 16px; }
+    .note { color:#a7b6c9; font-size: 13px; margin-top: 6px; }
+    .card { background:#0f1622; border:1px solid #1e2a3a; border-radius: 14px; padding: 14px; margin: 12px 0; }
+    .qhead { display:flex; gap:10px; align-items:flex-start; }
+    .badge { min-width: 44px; text-align:center; padding: 4px 8px; border-radius: 999px; border:1px solid #2a3b52; color:#bcd0ea; font-size: 12px; }
+    .qtext { font-size: 15px; line-height: 1.35; }
+    textarea, input[type="text"] {
+      width: 100%; box-sizing: border-box; margin-top: 10px;
+      background:#0b0f14; border:1px solid #24344a; color:#e7eef7;
+      border-radius: 10px; padding: 10px 10px; outline: none;
+    }
+    textarea { min-height: 66px; resize: vertical; }
+    .row { display:flex; gap: 10px; flex-wrap: wrap; }
+    button {
+      background:#2a7cff; color:white; border:0; border-radius: 12px;
+      padding: 10px 14px; cursor:pointer; font-weight: 600;
+    }
+    button.secondary { background:#24344a; }
+    button:disabled { opacity:.6; cursor:not-allowed; }
+    .resultTop { display:flex; gap:10px; align-items:center; flex-wrap: wrap; }
+    .pill { background:#0b0f14; border:1px solid #24344a; border-radius: 999px; padding: 6px 10px; color:#bcd0ea; font-size: 13px; }
+    .ok { color:#35d07f; }
+    .bad { color:#ff5c7a; }
+    .small { font-size: 12px; color:#a7b6c9; }
+    .ansBox { margin-top: 10px; padding: 10px; border-radius: 12px; border:1px solid #24344a; background:#0b0f14; }
+    .grid2 { display:grid; grid-template-columns: 1fr; gap: 10px; }
+    @media (min-width: 860px){ .grid2 { grid-template-columns: 1fr 1fr; } }
+    .footer { margin: 20px 0 40px; color:#8ea3bb; font-size: 12px; }
+    a { color:#8bb7ff; }
+  </style>
+</head>
+<body>
+<header>
+  <div class="wrap">
+    <h1>Quiz PMP / PmP – UTCN (57 întrebări)</h1>
+    <div class="note">Scrie răspunsuri scurte. Verificarea e „tolerantă” (acceptă variații uzuale: diacritice, ordine cuvinte, sinonime simple).</div>
+  </div>
+</header>
+
+<div class="wrap">
+  <div class="card">
+    <div class="resultTop">
+      <div class="pill">Total întrebări: <b id="totalQ">0</b></div>
+      <div class="pill">Completate: <b id="doneQ">0</b></div>
+      <div class="pill">Timp: <b id="timer">00:00</b></div>
+    </div>
+    <div class="row" style="margin-top:12px;">
+      <button id="btnSubmit">Finalizează & corectează</button>
+      <button id="btnReset" class="secondary">Reset</button>
+    </div>
+    <div class="small" style="margin-top:10px;">
+      Tip: răspuns liber. La final primești scor + răspunsurile corecte.
+    </div>
+  </div>
+
+  <div id="quiz"></div>
+
+  <div id="results" class="card" style="display:none;">
+    <h2 style="margin:0 0 8px 0; font-size:16px;">Rezultate</h2>
+    <div class="resultTop">
+      <div class="pill">Scor: <b id="score">0</b>/<b id="total">0</b></div>
+      <div class="pill">Procent: <b id="pct">0</b>%</div>
+    </div>
+    <div class="small" style="margin-top:10px;">
+      Mai jos ai pentru fiecare întrebare: răspunsul tău vs. răspunsul corect.
+    </div>
+    <div id="review" style="margin-top:12px;"></div>
+  </div>
+
+  <div class="footer">
+    Dacă vrei, ți-l fac și variantă cu <b>alegeri multiple</b> (A/B/C/D) ca la grile.
+  </div>
+</div>
+
+<script>
+/** --------- Utils: normalize + checking --------- **/
+function stripDiacritics(s){
+  return s.normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+}
+function norm(s){
+  return stripDiacritics(String(s || ""))
+    .toLowerCase()
+    .replace(/[\(\)\[\]\{\},.;:!?'"`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+function containsAllTokens(user, tokens){
+  const u = norm(user);
+  return tokens.every(t => u.includes(norm(t)));
+}
+function isAnyExact(user, answers){
+  const u = norm(user);
+  return answers.map(norm).includes(u);
+}
+function isAnyContains(user, variants){
+  const u = norm(user);
+  return variants.some(v => u.includes(norm(v)));
+}
+function checkAnswer(q, user){
+  const u = String(user || "").trim();
+  if(!u) return { ok:false, reason:"Necompletat" };
+
+  // exact variants
+  if(q.accept && q.accept.length){
+    if(isAnyExact(u, q.accept)) return { ok:true };
+  }
+
+  // contains variants
+  if(q.contains && q.contains.length){
+    if(isAnyContains(u, q.contains)) return { ok:true };
+  }
+
+  // token set required
+  if(q.tokens && q.tokens.length){
+    if(containsAllTokens(u, q.tokens)) return { ok:true };
+  }
+
+  // numeric-ish (accept 2^16 etc)
+  if(q.numeric && q.numeric.length){
+    const un = norm(u).replace(/\s/g,"");
+    for(const n of q.numeric){
+      const nn = norm(n).replace(/\s/g,"");
+      if(un === nn) return { ok:true };
+    }
+  }
+
+  return { ok:false };
+}
+
+/** --------- Questions (57) --------- **/
+const questions = [
+  // --- Set 1: 30 intrebari (Proiectare cu Microprocesoare) ---
+  { id:"S1-01", q:"Ce este un microprocesor?", tokens:["cpu","executa instructiuni"], correct:"Un circuit integrat (CPU) care execută instrucțiuni / prelucrează date." },
+  { id:"S1-02", q:"Ce tip de arhitectură utilizează microcontrolerele AVR?", contains:["harvard"], correct:"Arhitectură Harvard (modificată), RISC." },
+  { id:"S1-03", q:"Câți biți are memoria de date SRAM a microcontrolerului ATmega2560?", numeric:["65536","65 536"], contains:["8 kb"], correct:"8 KB SRAM = 8192 B = 65 536 biți." },
+  { id:"S1-04", q:"Ce funcție are registrul SREG în microcontrolerele AVR?", contains:["registru de stare"], correct:"Registru de stare: flag-uri ALU + bit global întreruperi (I)." },
+  { id:"S1-05", q:"Ce registru controlează direcția pinilor unui port în microcontrolerele AVR?", contains:["ddr"], correct:"DDRx." },
+  { id:"S1-06", q:"Ce face instrucțiunea sei în AVR?", contains:["activeaza","intr"], correct:"Activează global întreruperile (setează bitul I din SREG)." },
+  { id:"S1-07", q:"Ce registru este folosit pentru citirea stării pinilor unui port?", contains:["pinx"], correct:"PINx." },
+  { id:"S1-08", q:"Ce face instrucțiunea cli în AVR?", contains:["dezactiveaza","intr"], correct:"Dezactivează global întreruperile (șterge bitul I din SREG)." },
+  { id:"S1-09", q:"Ce este ISR?", contains:["interrupt service routine"], correct:"Interrupt Service Routine – rutina executată la întrerupere." },
+  { id:"S1-10", q:"Ce funcție Arduino este folosită pentru a scrie o valoare pe un pin digital?", accept:["digitalWrite","digitalwrite()"], correct:"digitalWrite(pin, HIGH/LOW)." },
+  { id:"S1-11", q:"Ce face funcția attachInterrupt() în Arduino?", contains:["ataseaza"], contains2:null, correct:"Atașează o rutină (ISR) la o întrerupere (pin/interrupt) cu un mod de declanșare." , contains:["attach","interrupt"]},
+  { id:"S1-12", q:"Ce funcție Arduino este folosită pentru a genera un semnal PWM?", accept:["analogWrite","analogwrite()"], correct:"analogWrite(pin, value)." },
+  { id:"S1-13", q:"Ce funcție Arduino returnează numărul de milisecunde de la pornirea programului?", accept:["millis","millis()"], correct:"millis()." },
+  { id:"S1-14", q:"Ce face funcția tone(pin, frequency) în Arduino?", contains:["semnal"], contains:["frecventa"], correct:"Generează un semnal pătrat (ton) la frecvența dată pe pin." },
+  { id:"S1-15", q:"Ce face funcția Serial.begin() în Arduino?", contains:["initial"], contains:["serial"], correct:"Inițializează comunicația serială la baud rate-ul ales." },
+  { id:"S1-16", q:"Ce registru controlează modul de funcționare al unui temporizator în AVR?", contains:["tccr"], correct:"TCCRnA/TCCRnB (biții WGM + prescaler etc.)." },
+  { id:"S1-17", q:"Ce este modul CTC al temporizatoarelor?", contains:["clear timer"], contains:["compare"], correct:"Clear Timer on Compare Match – contorul se resetează la match cu OCR." },
+  { id:"S1-18", q:"Ce registru este folosit pentru a seta valoarea de comparare a unui temporizator?", contains:["ocr"], correct:"OCRnA/OCRnB (OCRx)." },
+  { id:"S1-19", q:"Ce este PWM?", contains:["pulse width"], contains:["duty"], correct:"Pulse Width Modulation – variația duty-cycle-ului unui semnal periodic." },
+  { id:"S1-20", q:"Ce este SPI?", contains:["serial"], contains:["sincron"], correct:"Interfață serială sincronă master–slave, full-duplex." },
+  { id:"S1-21", q:"Ce semnale sunt folosite în SPI?", tokens:["mosi","miso","sck"], contains:["ss"], correct:"MOSI, MISO, SCK, SS/CS." },
+  { id:"S1-22", q:"Ce este USART?", contains:["receiver"], contains:["transmitter"], correct:"Modul serial sincron/asincron (UART/USART)." },
+  { id:"S1-23", q:"Ce este I2C?", tokens:["doua","fire"], contains:["sda"], contains2:null, correct:"Magistrală serială sincronă pe 2 fire: SDA + SCL (TWI)." , contains:["scl"]},
+  { id:"S1-24", q:"Ce face funcția Wire.begin() în Arduino?", contains:["initial"], contains:["i2c"], correct:"Inițializează magistrala I2C (Wire)." },
+  { id:"S1-25", q:"Ce face funcția SPI.transfer() în Arduino?", contains:["transmite"], contains:["prim"], correct:"Transmite și recepționează simultan un byte (full-duplex)." },
+  { id:"S1-26", q:"Care este rolul bitului ACD din registrul ACSR?", contains:["dezactiveaza"], contains:["comparator"], correct:"Dezactivează comparatorul analogic." },
+  { id:"S1-27", q:"Ce rezoluție are convertorul analog-digital (ADC) în ATmega328P?", contains:["10"], contains:["bit"], correct:"10 biți." },
+  { id:"S1-28", q:"Ce rol are bitul ADEN din registrul ADCSRA?", contains:["enable"], contains:["adc"], correct:"Activează ADC-ul." },
+  { id:"S1-29", q:"Ce este o punte H și care este rolul ei?", contains:["motor"], contains:["direct"], correct:"Circuit pentru control motor DC: schimbă sensul (și frânare/oprire)." },
+  { id:"S1-30", q:"Care este frecvența maximă de ceas a nucleelor ESP32?", numeric:["240 mhz","240"], correct:"Până la 240 MHz (uzual)." },
+
+  // --- Set 2: 24 intrebari (PMP Seria A) ---
+  { id:"S2-01", q:"Ce rol are registrul PINA?", contains:["cit"], contains:["starea"], correct:"Se citește starea logică a pinilor portului A." },
+  { id:"S2-02", q:"Câte locații adresabile are o memorie de 16 biți de adresă?", numeric:["2^16","65536","65 536"], correct:"2^16 = 65 536 locații adresabile." },
+  { id:"S2-03", q:"Cum se activează rezistențele pull-up la Arduino?", contains:["input_pullup"], correct:"pinMode(pin, INPUT_PULLUP)." },
+  { id:"S2-04", q:"Ce rol au registrii SPL și SPH?", contains:["stack"], contains:["pointer"], correct:"SPL+SPH = Stack Pointer (adresa vârfului stivei)." },
+  { id:"S2-05", q:"Care este diferența dintre RET și RETI?", tokens:["reti","intr"], contains:["ret"], correct:"RET: retur din subrutină; RETI: retur din ISR + reactivare întreruperi." },
+  { id:"S2-06", q:"Ce efect are instrucțiunea: PORTA &= ~(1<<PA3) ?", tokens:["reseteaza","pa3"], contains:["0"], correct:"Resetează bitul PA3 (PORTA bit3 = 0)." },
+  { id:"S2-07", q:"Care este rolul funcției millis()?", contains:["milisec"], contains:["pornirea"], correct:"Returnează milisecundele de la pornirea programului." },
+  { id:"S2-08", q:"Care este funcția Arduino pentru setarea direcției unui pin digital?", accept:["pinMode","pinmode()"], correct:"pinMode(pin, INPUT/OUTPUT/INPUT_PULLUP)." },
+  { id:"S2-09", q:"Ce rol are registrul EIMSK?", contains:["intr"], contains:["extern"], correct:"Activează/dezactivează întreruperile externe." },
+  { id:"S2-10", q:"Care este rolul registrului OCRx al unui temporizator?", contains:["valoarea"], contains:["compar"], correct:"Conține valoarea de comparare (Compare Match) pentru timer." },
+  { id:"S2-11", q:"Ce indică flag-ul C din SREG?", contains:["carry"], correct:"Carry/transport." },
+  { id:"S2-12", q:"Care sunt semnalele (pinii) folosiți la protocolul SPI?", tokens:["mosi","miso","sck"], contains:["ss"], correct:"MOSI, MISO, SCK, SS/CS." },
+  { id:"S2-13", q:"Ce rol are funcția cli()?", contains:["dezactiveaza"], contains:["intr"], correct:"Dezactivează global întreruperile." },
+  { id:"S2-14", q:"Care este structura unui pachet de date la UART?", tokens:["start"], tokens2:null, correct:"Start bit + biți date + (paritate opțional) + stop bit(ți)." , contains:["stop"]},
+  { id:"S2-15", q:"Care este funcția Arduino pentru începerea unei transmisii la I2C?", contains:["begintransmission"], correct:"Wire.beginTransmission(adresa)." },
+  { id:"S2-16", q:"Ce rezoluție are ADC-ul la Arduino Uno?", contains:["10"], contains:["bit"], correct:"10 biți (0..1023)." },
+  { id:"S2-17", q:"Ce rol are bitul ADSC din ADC?", contains:["start"], contains:["conversion"], correct:"Pornește conversia ADC." },
+  { id:"S2-18", q:"Ce reprezintă polaritatea și faza la protocolul SPI?", tokens:["cpol","cpha"], correct:"CPOL = polaritatea ceasului (nivel în repaus), CPHA = faza (frontul de eșantionare)." },
+  { id:"S2-19", q:"Câți biți de adresă sunt folosiți la protocolul TWI în Arduino?", numeric:["7","7 biti","7-bit"], correct:"7 biți (uzual)." },
+  { id:"S2-20", q:"Ce rol are semnalul SDA din protocolul TWI?", contains:["data"], correct:"Linia de date (SDA)." },
+  { id:"S2-21", q:"Care este diferența dintre instrucțiunile CP și CPI?", tokens:["cp","registr"], tokens2:null, correct:"CP compară doi regiștri; CPI compară registru cu constantă imediată." , contains:["cpi"]},
+  { id:"S2-22", q:"Ce rol are registrul TIFR?", contains:["flag"], contains:["intr"], correct:"Conține flag-urile de întrerupere ale temporizatoarelor." },
+  { id:"S2-23", q:"Ce rol are instrucțiunea sbis PINA, 1 ?", tokens:["sare","urmatoarea"], contains:["daca"], correct:"Sare peste următoarea instrucțiune dacă bitul 1 din PINA este setat." },
+  { id:"S2-24", q:"Care sunt tensiunile de referință care pot fi folosite pentru ADC?", contains:["avcc"], contains:["1 1"], contains2:null, correct:"AVcc (ex 5V), intern 1.1V, extern pe AREF." , contains:["aref"]},
+
+  // --- II / III / IV (din subiect) ---
+  { id:"S2-25", q:"(II) Prezentați modul în care se poate determina viteza de rotație a unui motor DC.", tokens:["encoder"], tokens2:null, correct:"Cu encoder / senzor Hall: număr impulsuri într-un interval și calculezi RPM." , contains:["rpm"]},
+  { id:"S2-26", q:"(III) Descrieți puntea H (H-bridge) și rolul pe care îl are.", tokens:["motor"], tokens2:null, correct:"Circuit cu 4 comutatoare care permite schimbarea sensului curentului prin motor (înainte/înapoi, frânare/oprire)." , contains:["direct"]},
+  { id:"S2-27", q:"(IV) Scrieți cod pentru a genera un semnal de 20 Hz fără a bloca programul principal.", tokens:["millis"], tokens2:null, correct:"Cod non-blocant cu millis() + toggle la 25ms (perioadă 50ms => 20Hz)." , contains:["25"]},
+];
+
+/** --------- Render --------- **/
+const quizEl = document.getElementById("quiz");
+const totalQEl = document.getElementById("totalQ");
+const doneQEl  = document.getElementById("doneQ");
+const btnSubmit = document.getElementById("btnSubmit");
+const btnReset  = document.getElementById("btnReset");
+
+totalQEl.textContent = String(questions.length);
+
+function render(){
+  quizEl.innerHTML = "";
+  questions.forEach((it, idx) => {
+    const card = document.createElement("div");
+    card.className = "card";
+    card.innerHTML = `
+      <div class="qhead">
+        <div class="badge">${idx+1}</div>
+        <div class="qtext"><b>${it.q}</b></div>
+      </div>
+      <textarea id="ans_${it.id}" placeholder="Scrie răspunsul aici..."></textarea>
+      <div class="small">Hint: răspuns scurt, ca pe foaie.</div>
+    `;
+    quizEl.appendChild(card);
+
+    const ta = card.querySelector("textarea");
+    ta.addEventListener("input", updateDoneCount);
+  });
+  updateDoneCount();
+}
+
+function updateDoneCount(){
+  let done = 0;
+  for(const it of questions){
+    const v = document.getElementById(`ans_${it.id}`).value.trim();
+    if(v.length) done++;
+  }
+  doneQEl.textContent = String(done);
+}
+
+/** --------- Timer --------- **/
+let start = Date.now();
+const timerEl = document.getElementById("timer");
+setInterval(() => {
+  const sec = Math.floor((Date.now() - start)/1000);
+  const mm = String(Math.floor(sec/60)).padStart(2,"0");
+  const ss = String(sec%60).padStart(2,"0");
+  timerEl.textContent = `${mm}:${ss}`;
+}, 500);
+
+/** --------- Submit / Review --------- **/
+btnSubmit.addEventListener("click", () => {
+  const resultsEl = document.getElementById("results");
+  const reviewEl  = document.getElementById("review");
+  const scoreEl   = document.getElementById("score");
+  const totalEl   = document.getElementById("total");
+  const pctEl     = document.getElementById("pct");
+
+  let score = 0;
+  const rows = [];
+
+  questions.forEach((it, idx) => {
+    const user = document.getElementById(`ans_${it.id}`).value;
+    const res = checkAnswer(it, user);
+    if(res.ok) score++;
+
+    rows.push({
+      idx: idx+1,
+      q: it.q,
+      user: user.trim() || "(necompletat)",
+      ok: res.ok,
+      correct: it.correct
+    });
+  });
+
+  scoreEl.textContent = String(score);
+  totalEl.textContent = String(questions.length);
+  pctEl.textContent = String(Math.round(score * 100 / questions.length));
+
+  // Build review
+  reviewEl.innerHTML = "";
+  const grid = document.createElement("div");
+  grid.className = "grid2";
+
+  rows.forEach(r => {
+    const c = document.createElement("div");
+    c.className = "ansBox";
+    c.innerHTML = `
+      <div class="qhead" style="margin-bottom:6px;">
+        <div class="badge">${r.idx}</div>
+        <div class="qtext">${r.ok ? `<span class="ok">CORECT</span>` : `<span class="bad">GREȘIT</span>`}</div>
+      </div>
+      <div class="small"><b>Întrebare:</b> ${r.q}</div>
+      <div style="margin-top:8px;"><span class="small"><b>Răspunsul tău:</b></span><br>${escapeHtml(r.user)}</div>
+      <div style="margin-top:8px;"><span class="small"><b>Răspuns corect:</b></span><br>${escapeHtml(r.correct)}</div>
+    `;
+    grid.appendChild(c);
+  });
+
+  reviewEl.appendChild(grid);
+  resultsEl.style.display = "block";
+  resultsEl.scrollIntoView({behavior:"smooth", block:"start"});
+});
+
+btnReset.addEventListener("click", () => {
+  if(!confirm("Sigur vrei reset? Se șterg toate răspunsurile.")) return;
+  for(const it of questions){
+    document.getElementById(`ans_${it.id}`).value = "";
+  }
+  document.getElementById("results").style.display = "none";
+  start = Date.now();
+  updateDoneCount();
+  window.scrollTo({top:0, behavior:"smooth"});
+});
+
+function escapeHtml(s){
+  return String(s)
+    .replaceAll("&","&amp;")
+    .replaceAll("<","&lt;")
+    .replaceAll(">","&gt;")
+    .replaceAll('"',"&quot;")
+    .replaceAll("'","&#039;")
+    .replaceAll("\n","<br>");
+}
+
+render();
+</script>
+</body>
+</html>
